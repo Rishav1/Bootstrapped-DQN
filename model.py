@@ -2,7 +2,7 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 
-def model(img_in, num_actions, scope, reuse=False):
+def model(img_in, num_actions, scope, reuse=False, heads=1):
     """As described in https://storage.googleapis.com/deepmind-data/assets/papers/DeepMindNature14236Paper.pdf"""
     with tf.variable_scope(scope, reuse=reuse):
         out = img_in
@@ -20,7 +20,7 @@ def model(img_in, num_actions, scope, reuse=False):
         return out
 
 
-def dueling_model(img_in, num_actions, scope, reuse=False):
+def dueling_model(img_in, num_actions, scope, reuse=False, heads=1):
     """As described in https://arxiv.org/abs/1511.06581"""
     with tf.variable_scope(scope, reuse=reuse):
         out = img_in
@@ -42,7 +42,7 @@ def dueling_model(img_in, num_actions, scope, reuse=False):
 
         return state_score + action_scores
 
-def bootstrap_model(img_in, num_actions, scope, reuse=False):
+def bootstrap_model(img_in, num_actions, scope, reuse=False, heads=10):
     """ As described in https://arxiv.org/abs/1602.04621"""
     with tf.variable_scope(scope, reuse=reuse), tf.device("/gpu:0"):
         out = img_in
@@ -55,13 +55,12 @@ def bootstrap_model(img_in, num_actions, scope, reuse=False):
 
         out_list =[]
         with tf.variable_scope("heads"):
-            for _ in range(10):
+            for _ in range(heads):
                 scope_net = "action_value_head_" + str(_)
                 with tf.variable_scope(scope_net):
                     out_temp = out
                     out_temp = layers.fully_connected(out_temp, num_outputs=512, activation_fn=tf.nn.relu)
                     out_temp = layers.fully_connected(out_temp, num_outputs=num_actions, activation_fn=None)
                 out_list.append(out_temp)
-            
-        return out_list
 
+        return out_list

@@ -70,8 +70,29 @@ The functions in this file can are used to create the following functions:
 import tensorflow as tf
 import baselines.common.tf_util as U
 
+def set_cover(subsets):
+    """Find a family of subsets that covers the universal set"""
 
-def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, scope="deepq", reuse=None):
+    B = tf.shape(subsets)[0]
+    N = tf.shape(subsets)[1]
+    M = tf.shape(subsets)[2]
+
+    def body(cover):
+        universe_extended = 1 - tf.tile(tf.matmul(subsets, tf.reshape(cover, [B, M, 1])), [1, 1, M])
+        s = tf.reduce_sum(tf.multiply(subsets, universe_extended), axis=1)
+        c = tf.one_hot(tf.argmax(s, axis=1), M, dtype=tf.int32)
+        cover = cover + c * (1 - cover)
+        return cover
+
+    def cond(cover):
+        return tf.reduce_any(tf.matmul(subsets, tf.reshape(cover, [B, M, 1])) < 1)
+
+    cover = tf.zeros([B, M], tf.int32)
+    loop = tf.while_loop(cond, body, [cover])
+
+    return loop
+
+def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, heads=10, scope="deepq", reuse=None):
     """Creates the act function:
 
     Parameters
@@ -112,10 +133,28 @@ def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, scope="deepq", 
             eps = tf.get_variable("eps", (), initializer=tf.constant_initializer(0))
 
             with tf.device("/gpu:0"):
-                q_values = q_func(observations_ph.get(), num_actions, scope="q_func")
+                q_values_online = q_func(observations_ph.get(), num_actions, scope="q_func", heads=heads)
+                q_values_target = q_func(observations_ph.get(), num_actions, scope="target_q_func", heads=heads)
 
-            q_values = tf.gather(q_values, head)
-            deterministic_actions = tf.argmax(q_values, axis=1)
+            if swarm:
+                action_subsets = []
+                for i in range(heads):
+                    target_greedy_action = tf.argmax(q_values_target[i], axis=1)
+                    online_q_value_threshold = tf.reduce_sum(q_values_online[i] * tf.one_hot(target_greedy_action, num_actions), 1)
+
+                    action_subset = tf.where((q_values_online[i] - online_q_value_threshold) >= 0,
+                                             tf.ones([tf.shape(observations_ph.get())[0], num_actions], tf.int32),
+                                             tf.zeros([tf.shape(observations_ph.get())[0], num_actions], tf.int32))
+                    action_subsets.append(action_subset)
+
+                action_subsets = tf.stack(action_subsets, axis=1)
+                actions_cover = set_cover(action_subsets)
+
+                head_preferred_actions = tf.transpose(action_subsets, [1, 0, 2])[head]
+                deterministic_actions = tf.argmax(tf.multiply(actions_cover, head_preferred_actions), axis=1)
+            else:
+                q_values = tf.gather(q_values, head)
+                deterministic_actions = tf.argmax(q_values, axis=1)
 
             batch_size = tf.shape(observations_ph.get())[0]
             random_actions = tf.random_uniform(tf.stack([batch_size]), minval=0, maxval=num_actions, dtype=tf.int64)
@@ -155,7 +194,7 @@ def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, scope="deepq", 
                              updates=[update_eps_expr])
             return act
 
-def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, grad_norm_clipping=None, gamma=1.0, double_q=True, scope="deepq", reuse=None):
+def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, swarm=False, heads=10, grad_norm_clipping=None, gamma=1.0, double_q=True, scope="deepq", reuse=None):
     """Creates the train function:
 
     Parameters
@@ -204,7 +243,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, gr
     debug: {str: function}
         a bunch of functions to print debug data like q_values.
     """
-    act_f = build_act(make_obs_ph, q_func, bootstrap=bootstrap, num_actions=num_actions, scope=scope, reuse=reuse)
+    act_f = build_act(make_obs_ph, q_func, bootstrap=bootstrap, swarm=swarm, heads=heads, num_actions=num_actions, scope=scope, reuse=reuse)
 
     with tf.variable_scope(scope, reuse=reuse):
         # set up placeholders
@@ -220,28 +259,48 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, gr
 
         with tf.device("/gpu:0"):
             # q network evaluation
-            q_t = q_func(obs_t_input.get(), num_actions, scope="q_func", reuse=True)  # reuse parameters from act
+            q_t = q_func(obs_t_input.get(), num_actions, scope="q_func", reuse=True, heads=heads)  # reuse parameters from act
             q_func_vars = U.scope_vars(U.absolute_scope_name("q_func"))
 
             # target q network evalution
-            q_tp1 = q_func(obs_tp1_input.get(), num_actions, scope="target_q_func")
+            q_tp1 = q_func(obs_tp1_input.get(), num_actions, scope="target_q_func", reuse=True, heads=heads) # reuse parameters form act
             target_q_func_vars = U.scope_vars(U.absolute_scope_name("target_q_func"))
 
             # q scores for actions which we know were selected in the given state.
             q_t_selected = []
-            for i in range(10):
+            for i in range(heads):
                 q_t_selected.append(tf.reduce_sum(q_t[i] * tf.one_hot(act_t_ph, num_actions), 1))
 
             # compute estimate of best possible value starting from state at t + 1
             q_tp1_best = []
             q_tp1_best_using_online_net =[]
-            if double_q:
+            if swarm:
+                q_tp1_using_online_net = q_func(obs_tp1_input.get(), num_actions, scope="q_func", reuse=True, heads=heads)
+
+                action_subsets = []
+                for i in range(heads):
+                    target_greedy_action = tf.argmax(q_tp1[i], axis=1)
+                    online_q_value_threshold = tf.reduce_sum(q_tp1_using_online_net[i] * tf.one_hot(target_greedy_action, num_actions), 1)
+
+                    action_subset = tf.where((q_tp1_using_online_net[i] - online_q_value_threshold) >= 0,
+                                             tf.ones([tf.shape(obs_t_input.get())[0], num_actions], tf.int32),
+                                             tf.zeros([tf.shape(obs_t_input.get())[0], num_actions], tf.int32))
+                    action_subsets.append(action_subset)
+
+                action_subsets = tf.stack(action_subsets, axis=1)
+                actions_cover = set_cover(action_subsets)
+                preferred_actions = tf.transpose(action_subsets, [1, 0, 2])
+
+                for i in range(heads):
+                    q_tp1_best_using_online_net.append(tf.argmax(tf.multiply(actions_cover, preferred_actions[i]), axis=1))
+                    q_tp1_best.append(tf.reduce_sum(q_tp1[i] * tf.one_hot(q_tp1_best_using_online_net[i], num_actions), 1))
+            elif double_q:
                 q_tp1_using_online_net = q_func(obs_tp1_input.get(), num_actions, scope="q_func", reuse=True)
-                for i in range(10):
+                for i in range(heads):
                     q_tp1_best_using_online_net.append(tf.arg_max(q_tp1_using_online_net[i], 1))
                     q_tp1_best.append(tf.reduce_sum(q_tp1[i] * tf.one_hot(q_tp1_best_using_online_net[i], num_actions), 1))
             else:
-                for i in range(10):
+                for i in range(heads):
                     q_tp1_best.append(tf.reduce_max(q_tp1, 1))
 
         q_tp1_best_masked =[]
@@ -253,7 +312,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, gr
         optimizer = tf.train.AdamOptimizer(learning_rate=lr, beta1=0.9, beta2=0.99, epsilon=1e-4)
         q_func_heads = U.scope_vars(U.absolute_scope_name("q_func/heads"))
         q_func_convnets = U.scope_vars(U.absolute_scope_name("q_func/convnet"))
-        for i in range(10):
+        for i in range(heads):
             q_tp1_best_masked.append((1.0 - done_mask_ph) * q_tp1_best[i])
 
             # compute RHS of bellman equation

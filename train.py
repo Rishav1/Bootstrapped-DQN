@@ -42,10 +42,12 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=32, help="number of transitions to optimize at the same time")
     parser.add_argument("--learning-freq", type=int, default=4, help="number of iterations between every optimization step")
     parser.add_argument("--target-update-freq", type=int, default=10000, help="number of iterations between every target network update")
+    parser.add_argument("--heads", type=int, default=10, help="number of heads for bootstrap")
     # Bells and whistles
     boolean_flag(parser, "double-q", default=True, help="whether or not to use double q learning")
     boolean_flag(parser, "dueling", default=False, help="whether or not to use dueling model")
     boolean_flag(parser, "bootstrap", default=True, help="whether or not to use bootstrap model")
+    boolean_flag(parser, "swarm", default=False, help="whether or not to use bootstrap model")
     boolean_flag(parser, "prioritized", default=False, help="whether or not to use prioritized replay buffer")
     parser.add_argument("--prioritized-alpha", type=float, default=0.6, help="alpha parameter for prioritized replay buffer")
     parser.add_argument("--prioritized-beta0", type=float, default=0.4, help="initial value of beta parameters for prioritized replay")
@@ -143,7 +145,9 @@ if __name__ == '__main__':
                 optimizer=tf.train.AdamOptimizer(learning_rate=args.lr, epsilon=1e-4),
                 gamma=0.99,
                 grad_norm_clipping=10,
-                double_q=args.double_q
+                double_q=args.double_q,
+                heads=args.heads,
+                swarm=args.swarm
             )
         else:
             act, train, update_target, debug = deepq.build_train(
