@@ -80,14 +80,14 @@ def set_cover(subsets):
     def body(cover):
         universe_extended = 1 - tf.tile(tf.matmul(subsets, tf.reshape(cover, [B, M, 1])), [1, 1, M])
         s = tf.reduce_sum(tf.multiply(subsets, universe_extended), axis=1)
-        c = tf.one_hot(tf.argmax(s, axis=1), M, dtype=tf.int32)
+        c = tf.one_hot(tf.argmax(s, axis=1), M)
         cover = cover + c * (1 - cover)
         return cover
 
     def cond(cover):
         return tf.reduce_any(tf.matmul(subsets, tf.reshape(cover, [B, M, 1])) < 1)
 
-    cover = tf.zeros([B, M], tf.int32)
+    cover = tf.zeros([B, M])
     loop = tf.while_loop(cond, body, [cover])
 
     return loop
@@ -143,8 +143,8 @@ def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, he
                     online_q_value_threshold = tf.reduce_sum(q_values_online[i] * tf.one_hot(target_greedy_action, num_actions), 1)
 
                     action_subset = tf.where((q_values_online[i] - online_q_value_threshold) >= 0,
-                                             tf.ones([tf.shape(observations_ph.get())[0], num_actions], tf.int32),
-                                             tf.zeros([tf.shape(observations_ph.get())[0], num_actions], tf.int32))
+                                             tf.ones([tf.shape(observations_ph.get())[0], num_actions]),
+                                             tf.zeros([tf.shape(observations_ph.get())[0], num_actions]))
                     action_subsets.append(action_subset)
 
                 action_subsets = tf.stack(action_subsets, axis=1)
@@ -283,8 +283,8 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, sw
                     online_q_value_threshold = tf.reduce_sum(q_tp1_using_online_net[i] * tf.one_hot(target_greedy_action, num_actions), 1)
 
                     action_subset = tf.where((q_tp1_using_online_net[i] - online_q_value_threshold) >= 0,
-                                             tf.ones([tf.shape(obs_t_input.get())[0], num_actions], tf.int32),
-                                             tf.zeros([tf.shape(obs_t_input.get())[0], num_actions], tf.int32))
+                                             tf.ones([tf.shape(obs_t_input.get())[0], num_actions]),
+                                             tf.zeros([tf.shape(obs_t_input.get())[0], num_actions]))
                     action_subsets.append(action_subset)
 
                 action_subsets = tf.stack(action_subsets, axis=1)

@@ -194,7 +194,7 @@ if __name__ == '__main__':
         obs = env.reset()
 
         # Main training loop
-        head = np.random.randint(10)        #Initial head initialisation
+        head = np.random.randint(args.heads)        #Initial head initialisation
         while True:
             num_iters += 1
             # Take action and store transition in the replay buffer.
