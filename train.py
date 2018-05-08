@@ -207,7 +207,7 @@ if __name__ == '__main__':
             obs = new_obs
             if done:
                 obs = env.reset()
-                head = np.random.randint(10)
+                head = np.random.randint(args.heads)
 
             if (num_iters > max(0.5 * args.batch_size, args.replay_buffer_size // 20) and
                     num_iters % args.learning_freq == 0):

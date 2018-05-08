@@ -153,8 +153,8 @@ def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, he
                 head_preferred_actions = tf.transpose(action_subsets, [1, 0, 2])[head]
                 deterministic_actions = tf.argmax(tf.multiply(actions_cover, head_preferred_actions), axis=1)
             else:
-                q_values = tf.gather(q_values, head)
-                deterministic_actions = tf.argmax(q_values, axis=1)
+                q_value = tf.gather(q_values_online, head)
+                deterministic_actions = tf.argmax(q_value, axis=1)
 
             batch_size = tf.shape(observations_ph.get())[0]
             random_actions = tf.random_uniform(tf.stack([batch_size]), minval=0, maxval=num_actions, dtype=tf.int64)
@@ -295,7 +295,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, sw
                     q_tp1_best_using_online_net.append(tf.argmax(tf.multiply(actions_cover, preferred_actions[i]), axis=1))
                     q_tp1_best.append(tf.reduce_sum(q_tp1[i] * tf.one_hot(q_tp1_best_using_online_net[i], num_actions), 1))
             elif double_q:
-                q_tp1_using_online_net = q_func(obs_tp1_input.get(), num_actions, scope="q_func", reuse=True)
+                q_tp1_using_online_net = q_func(obs_tp1_input.get(), num_actions, scope="q_func", reuse=True, heads=heads)
                 for i in range(heads):
                     q_tp1_best_using_online_net.append(tf.arg_max(q_tp1_using_online_net[i], 1))
                     q_tp1_best.append(tf.reduce_sum(q_tp1[i] * tf.one_hot(q_tp1_best_using_online_net[i], num_actions), 1))
