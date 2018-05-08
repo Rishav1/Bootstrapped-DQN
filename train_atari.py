@@ -116,7 +116,7 @@ def maybe_load_model(savedir, container):
 
 if __name__ == '__main__':
     args = parse_args()
-    if arg.gpu == 0:
+    if args.gpu == 0:
         args.device = "/cpu:0"
     else:
         args.device = "/gpu:{}".format(args.gpu - 1)

@@ -243,7 +243,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, sw
     debug: {str: function}
         a bunch of functions to print debug data like q_values.
     """
-    act_f = build_act(make_obs_ph, q_func, bootstrap=bootstrap, swarm=swarm, heads=heads, num_actions=num_actions, scope=scope, reuse=reuse)
+    act_f = build_act(make_obs_ph, q_func, bootstrap=bootstrap, swarm=swarm, heads=heads, num_actions=num_actions, scope=scope, reuse=reuse, device=device)
 
     with tf.variable_scope(scope, reuse=reuse):
         # set up placeholders
@@ -281,7 +281,8 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, sw
                 for i in range(heads):
                     target_greedy_action = tf.argmax(q_tp1[i], axis=1)
                     online_q_value_threshold = tf.reduce_sum(q_tp1_using_online_net[i] * tf.one_hot(target_greedy_action, num_actions), 1)
-
+                    online_q_value_threshold = tf.tile(tf.expand_dims(online_q_value_threshold, 1), tf.constant([1, num_actions]))
+                    
                     action_subset = tf.where((q_tp1_using_online_net[i] - online_q_value_threshold) >= 0,
                                              tf.ones([tf.shape(obs_t_input.get())[0], num_actions]),
                                              tf.zeros([tf.shape(obs_t_input.get())[0], num_actions]))
