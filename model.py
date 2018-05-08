@@ -6,6 +6,10 @@ def simple_bootstrap_model(inpt, num_actions, scope, reuse=False, heads=10):
     with tf.variable_scope(scope, reuse=reuse):
         out_list = []
         out = inpt
+        with tf.variable_scope("convnet"):
+            out_temp = layers.fully_connected(out, num_outputs=64, activation_fn=tf.nn.relu)
+        out = out_temp
+
         with tf.variable_scope("heads"):
             for _ in range(heads):
                 scope_net = "action_value_head_" + str(_)
