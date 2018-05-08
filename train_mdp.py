@@ -99,7 +99,7 @@ def parse_args():
     parser.add_argument("--prioritized-eps", type=float, default=1e-6, help="eps parameter for prioritized replay buffer")
     # mdp Parameters
     parser.add_argument("--save-summary-dir", type=str, default="", help="default tensorboard summary directory")
-    parser.add_argument("--mdp-arity", type=int, default=10, help="nodes per dim of MDP")
+    parser.add_argument("--mdp-arity", type=int, default=5, help="nodes per dim of MDP")
     parser.add_argument("--mdp-dimension", type=int, default=4, help="dimentions of MDP")
     parser.add_argument("--mdp-state-size", type=int, default=10, help="representational dimension of MDP states")
 
@@ -159,12 +159,12 @@ def maybe_load_model(savedir, container):
 
 if __name__ == '__main__':
     args = parse_args()
-    if arg.gpu == 0:
+    if args.gpu == 0:
         args.device = "/cpu:0"
     else:
         args.device = "/gpu:{}".format(args.gpu - 1)
     # Parse savedir and azure container.
-    savedir = "{}_mdp_{}_{}_{}".format(args.save_dir, args.mdp_arity, args.mdp_dimension, args.state_size)
+    savedir = "{}_mdp_{}_{}_{}".format(args.save_dir, args.mdp_arity, args.mdp_dimension, args.mdp_state_size)
     if args.save_azure_container is not None:
         account_name, account_key, container_name = args.save_azure_container.split(":")
         container = Container(account_name=account_name,
@@ -177,13 +177,13 @@ if __name__ == '__main__':
     else:
         container = None
 
-    env = multidim_mdp(args.mdp_dimension, args.mdp_arity, args.state_size)
+    env = multidim_mdp(args.mdp_dimension, args.mdp_arity, args.mdp_state_size)
 
     with U.make_session(120) as sess:
         # Create training graph and replay buffer
         if args.bootstrap :
             act, train, update_target, debug = deepq.build_train(
-                make_obs_ph=lambda name: U.Uint8Input(args.state_size, name=name),
+                make_obs_ph=lambda name: U.Uint8Input((args.mdp_state_size,), name=name),
                 q_func=simple_bootstrap_model,
                 bootstrap=args.bootstrap,
                 num_actions=2 * args.mdp_arity,
@@ -197,7 +197,7 @@ if __name__ == '__main__':
             )
         else:
             act, train, update_target, debug = deepq.build_train(
-                make_obs_ph=lambda name: U.Uint8Input(args.state_size, name=name),
+                make_obs_ph=lambda name: U.Uint8Input((args.mdp_state_size,), name=name),
                 q_func=dueling_model if args.dueling else model,
                 num_actions=2 * args.mdp_arity,
                 optimizer=tf.train.AdamOptimizer(learning_rate=args.lr, epsilon=1e-4),
