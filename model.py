@@ -1,6 +1,19 @@
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
+def simple_bootstrap_model(inpt, num_actions, scope, reuse=False, heads=10):
+    """This model takes as input an observation and returns values of all actions."""
+    with tf.variable_scope(scope, reuse=reuse):
+        out_list = []
+        out = inpt
+        with tf.variable_scope("heads"):
+            for _ in range(heads):
+                scope_net = "action_value_head_" + str(_)
+                with tf.variable_scope(scope_net):
+                    out_temp = layers.fully_connected(out, num_outputs=64, activation_fn=tf.nn.relu)
+                    out_temp = layers.fully_connected(out_temp, num_outputs=num_actions, activation_fn=None)
+                out_list.append(out_temp)
+        return out_list
 
 def model(img_in, num_actions, scope, reuse=False, heads=1):
     """As described in https://storage.googleapis.com/deepmind-data/assets/papers/DeepMindNature14236Paper.pdf"""
@@ -44,7 +57,7 @@ def dueling_model(img_in, num_actions, scope, reuse=False, heads=1):
 
 def bootstrap_model(img_in, num_actions, scope, reuse=False, heads=10):
     """ As described in https://arxiv.org/abs/1602.04621"""
-    with tf.variable_scope(scope, reuse=reuse), tf.device("/gpu:0"):
+    with tf.variable_scope(scope, reuse=reuse):
         out = img_in
         with tf.variable_scope("convnet"):
             # original architecture
