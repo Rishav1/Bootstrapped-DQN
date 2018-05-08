@@ -35,6 +35,7 @@ def parse_args():
     # Environment
     parser.add_argument("--env", type=str, default="Seaquest", help="name of the game")
     parser.add_argument("--seed", type=int, default=42, help="which seed to use")
+    parser.add_argument("--gpu", type=int, default=1, help="GPU device to use(0 for none)")
     # Core DQN parameters
     parser.add_argument("--replay-buffer-size", type=int, default=int(1e6), help="replay buffer size")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate for Adam optimizer")
@@ -115,6 +116,10 @@ def maybe_load_model(savedir, container):
 
 if __name__ == '__main__':
     args = parse_args()
+    if arg.gpu == 0:
+        args.device = "/cpu:0"
+    else:
+        args.device = "/gpu:{}".format(args.gpu - 1)
     # Parse savedir and azure container.
     savedir = args.save_dir + "_" + args.env
     if args.save_azure_container is not None:
@@ -147,7 +152,8 @@ if __name__ == '__main__':
                 grad_norm_clipping=10,
                 double_q=args.double_q,
                 heads=args.heads,
-                swarm=args.swarm
+                swarm=args.swarm,
+                device=args.device
             )
         else:
             act, train, update_target, debug = deepq.build_train(
@@ -157,7 +163,8 @@ if __name__ == '__main__':
                 optimizer=tf.train.AdamOptimizer(learning_rate=args.lr, epsilon=1e-4),
                 gamma=0.99,
                 grad_norm_clipping=10,
-                double_q=args.double_q
+                double_q=args.double_q,
+                device=args.device
             )
 
         approximate_num_iters = args.num_steps / 4

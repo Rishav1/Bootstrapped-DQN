@@ -92,7 +92,7 @@ def set_cover(subsets):
 
     return loop
 
-def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, heads=10, scope="deepq", reuse=None):
+def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, heads=10, scope="deepq", reuse=None, device='\cpu:0'):
     """Creates the act function:
 
     Parameters
@@ -132,7 +132,7 @@ def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, he
 
             eps = tf.get_variable("eps", (), initializer=tf.constant_initializer(0))
 
-            with tf.device("/gpu:0"):
+            with tf.device(device):
                 q_values_online = q_func(observations_ph.get(), num_actions, scope="q_func", heads=heads)
                 q_values_target = q_func(observations_ph.get(), num_actions, scope="target_q_func", heads=heads)
 
@@ -194,7 +194,7 @@ def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, he
                              updates=[update_eps_expr])
             return act
 
-def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, swarm=False, heads=10, grad_norm_clipping=None, gamma=1.0, double_q=True, scope="deepq", reuse=None):
+def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, swarm=False, heads=10, grad_norm_clipping=None, gamma=1.0, double_q=True, scope="deepq", reuse=None, device="/cpu:0"):
     """Creates the train function:
 
     Parameters
@@ -257,7 +257,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, sw
 
         lr = tf.get_variable("lr", (), initializer=tf.constant_initializer(0))
 
-        with tf.device("/gpu:0"):
+        with tf.device(device):
             # q network evaluation
             q_t = q_func(obs_t_input.get(), num_actions, scope="q_func", reuse=True, heads=heads)  # reuse parameters from act
             q_func_vars = U.scope_vars(U.absolute_scope_name("q_func"))
@@ -320,7 +320,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, sw
 
             # compute the error (potentially clipped)
             td_error.append(q_t_selected[i] - tf.stop_gradient(q_t_selected_target[i]))
-            with tf.device("/gpu:0"):
+            with tf.device(device):
                 errors.append(U.huber_loss(td_error[i]))
             weighted_error.append(tf.reduce_mean(importance_weights_ph * errors[i]))
             # compute optimization op (potentially with gradient clipping)
