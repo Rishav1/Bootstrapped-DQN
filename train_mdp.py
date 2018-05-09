@@ -55,18 +55,23 @@ def plotly_plot(ep_rewards, filename):
             zeroline=False
         ),
     )
+    def running_mean(x, N):
+        cumsum = np.cumsum(np.insert(x, 0, 0)) 
+        return (cumsum[N:] - cumsum[:-N]) / float(N)
+
     data = []
     for head, rewards in ep_rewards.items():
+        rewards_mean = running_mean(rewards, 100)
         data.append(
             go.Scatter(
-                x=rewards,
-                y=range(len(rewards)),
-                modes='lines',
+                y=rewards_mean,
+                x=list(range(len(rewards_mean))),
+                mode='lines',
                 name='Head {}'.format(head),
             )
         )
     fig = go.Figure(data=data, layout=layout)
-    py.iplot(fig, filename=filename)
+    py.plot(fig, filename=filename, auto_open=False)
 
 def multidim_mdp(num_nodes_per_dim, num_dimension, state_size):
     states = {}
@@ -180,7 +185,7 @@ def maybe_save_model(savedir, container, state, rewards, steps):
     relatively_safe_pickle_dump(steps, os.path.join(savedir, 'steps.pkl'))
     if container is not None:
         container.put(os.path.join(savedir, 'steps.pkl'), 'steps.pkl')
-    plotly_plot(rewards, os.path.join(savedir, 'episode_rewards'))
+    plotly_plot(rewards, savedir.split("/")[-1])
     logger.log("Saved model in {} seconds\n".format(time.time() - start_time))
 
 
@@ -212,7 +217,7 @@ if __name__ == '__main__':
     else:
         args.device = "/gpu:{}".format(args.gpu - 1)
     # Parse savedir and azure container.
-    savedir = "{}_mdp_{}_{}_{}".format(args.save_dir, args.mdp_arity, args.mdp_dimension, args.mdp_state_size)
+    savedir = "{}{}_mdp_{}_{}_{}".format(args.save_dir,"swarm" if args.swarm else "bootstrap", args.mdp_arity, args.mdp_dimension, args.mdp_state_size)
     if args.save_azure_container is not None:
         account_name, account_key, container_name = args.save_azure_container.split(":")
         container = Container(account_name=account_name,
@@ -292,6 +297,7 @@ if __name__ == '__main__':
         # Main training loop
         head = np.random.randint(args.heads)        #Initial head initialisation
         ep_rewards[head] = [0]
+        ep_rewards_cum = []
         episode = 1
 
         while True:
@@ -308,6 +314,7 @@ if __name__ == '__main__':
             replay_buffer.add(obs.value, action, new_obs.reward, new_obs.value, terminated)
             obs = new_obs
             if terminated:
+                ep_rewards_cum.append(ep_rewards[head][-1])
                 episode += 1
                 obs = env.initialize()
                 head = np.random.randint(args.heads)
@@ -357,14 +364,16 @@ if __name__ == '__main__':
                 logger.record_tabular("% completion", completion)
                 logger.record_tabular("iters", num_iters)
                 logger.record_tabular("episodes", episode)
-                logger.record_tabular("reward (100 epi mean)", [np.mean(rewards[-100:] for rewards in ep_rewards.values()]))
+                logger.record_tabular("rewards_tot (100 epi mean)", np.mean(ep_rewards_cum[-100:]))
+                logger.record_tabular("reward (100 epi mean)", ["{0:.2f}".format(np.mean(rewards[-100:])) for rewards in ep_rewards.values()])
                 logger.record_tabular("head for episode", (head+1))
                 logger.record_tabular("exploration", exploration.value(num_iters))
                 if args.prioritized:
                     logger.record_tabular("max priority", replay_buffer._max_priority)
                 fps_estimate = (float(steps_per_iter) / (float(iteration_time_est) + 1e-6)
-                                if steps_per_iter._value is not None else float(-1))
+                                if steps_per_iter._value is not None else None)
                 logger.dump_tabular()
                 logger.log()
-                logger.log("ETA: " + pretty_eta(int(steps_left / fps_estimate)))
+                if fps_estimate:
+                    logger.log("ETA: " + pretty_eta(int(steps_left / fps_estimate)))
                 logger.log()
