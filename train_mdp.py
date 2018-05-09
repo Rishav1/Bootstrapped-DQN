@@ -29,26 +29,28 @@ from baselines.common.atari_wrappers_deprecated import wrap_dqn
 from baselines.common.azure_utils import Container
 from model import model, dueling_model, bootstrap_model, simple_bootstrap_model
 
-def multidim_mdp(num_nodes_per_dim, num_dimention, state_size):
+def multidim_mdp(num_nodes_per_dim, num_dimension, state_size):
     states = {}
     actions = []
     action_generator = ActionGenerator('name')
-    for dim in range(num_dimention):
+    for dim in range(num_dimension):
         actions.append(action_generator.generate_action(name=2*dim))
         actions.append(action_generator.generate_action(name=2*dim+1))
 
     state_generator = StateGenerator('name', 'value', 'reward')
-    for state_ind_value in range(num_nodes_per_dim ** num_dimention):
+    for state_ind_value in range(num_nodes_per_dim ** num_dimension):
         state_ind = []
         state_ind_value_copy = state_ind_value
-        for i in range(num_dimention):
+        for i in range(num_dimension):
             state_ind.append(state_ind_value_copy % num_nodes_per_dim)
             state_ind_value_copy = int(state_ind_value_copy / num_nodes_per_dim)
 
         if state_ind_value == 0:
             reward = 1/ num_nodes_per_dim
-        elif state_ind_value == num_nodes_per_dim ** num_dimention - 1:
+        elif state_ind_value == num_nodes_per_dim ** num_dimension - 1:
             reward = 1
+        else:
+            reward = 0
         states[tuple(state_ind)] = state_generator.generate_state(name=tuple(state_ind),
                                                                   value=np.random.random_sample(state_size),
                                                                   reward=reward)
@@ -59,17 +61,23 @@ def multidim_mdp(num_nodes_per_dim, num_dimention, state_size):
 
 
     for state_ind, state in states.items():
-        for dim in range(num_dimention):
+        for dim in range(num_dimension):
             if state_ind[dim] != 0:
                 next_state_ind = list(state_ind)
                 next_state_ind[dim] -= 1
                 multidim_model.add_transition(state, actions[2 * dim], {states[tuple(next_state_ind)] : 1})
+            else:
+                multidim_model.add_transition(state, actions[2 * dim], {state : 1})
+
             if state_ind[dim] != num_nodes_per_dim - 1:
                 next_state_ind = list(state_ind)
                 next_state_ind[dim] += 1
                 multidim_model.add_transition(state, actions[2 * dim + 1], {states[tuple(next_state_ind)] : 1})
+            else:
+                multidim_model.add_transition(state, actions[2 * dim + 1], {state : 1})
 
-    multidim_model.add_init_states({states[(1,) * num_dimention] : 1})
+    multidim_model.add_init_states({states[(1,) * num_dimension] : 1})
+    multidim_model.add_final_states([states[(0,) * num_dimension], states[(num_nodes_per_dim ** num_dimension - 1,) * num_dimension]])
     multidim_model.finalize()
     multidim_model.visualize()
     return multidim_model
@@ -86,8 +94,8 @@ def parse_args():
     parser.add_argument("--num-steps", type=int, default=int(4e5), help="total number of steps to run the environment for")
     parser.add_argument("--batch-size", type=int, default=32, help="number of transitions to optimize at the same time")
     parser.add_argument("--learning-freq", type=int, default=1, help="number of iterations between every optimization step")
-    parser.add_argument("--target-update-freq", type=int, default=2000, help="number of iterations between every target network update")
-    parser.add_argument("--heads", type=int, default=10, help="number of heads for bootstrap")
+    parser.add_argument("--target-update-freq", type=int, default=1000, help="number of iterations between every target network update")
+    parser.add_argument("--heads", type=int, default=5, help="number of heads for bootstrap")
     # Bells and whistles
     boolean_flag(parser, "double-q", default=True, help="whether or not to use double q learning")
     boolean_flag(parser, "dueling", default=False, help="whether or not to use dueling model")
@@ -99,9 +107,9 @@ def parse_args():
     parser.add_argument("--prioritized-eps", type=float, default=1e-6, help="eps parameter for prioritized replay buffer")
     # mdp Parameters
     parser.add_argument("--save-summary-dir", type=str, default="", help="default tensorboard summary directory")
-    parser.add_argument("--mdp-arity", type=int, default=5, help="nodes per dim of MDP")
-    parser.add_argument("--mdp-dimension", type=int, default=4, help="dimentions of MDP")
-    parser.add_argument("--mdp-state-size", type=int, default=10, help="representational dimension of MDP states")
+    parser.add_argument("--mdp-arity", type=int, default=10, help="nodes per dim of MDP")
+    parser.add_argument("--mdp-dimension", type=int, default=1, help="dimentions of MDP")
+    parser.add_argument("--mdp-state-size", type=int, default=5, help="representational dimension of MDP states")
 
     # Checkpointing
     parser.add_argument("--save-dir", type=str, default="./logs", help="directory in which training state and model should be saved.")
@@ -177,7 +185,7 @@ if __name__ == '__main__':
     else:
         container = None
 
-    env = multidim_mdp(args.mdp_dimension, args.mdp_arity, args.mdp_state_size)
+    env = multidim_mdp(args.mdp_arity, args.mdp_dimension, args.mdp_state_size)
 
     with U.make_session(120) as sess:
         # Create training graph and replay buffer
@@ -186,7 +194,7 @@ if __name__ == '__main__':
                 make_obs_ph=lambda name: U.Uint8Input((args.mdp_state_size,), name=name),
                 q_func=simple_bootstrap_model,
                 bootstrap=args.bootstrap,
-                num_actions=2 * args.mdp_arity,
+                num_actions=2 * args.mdp_dimension,
                 optimizer=tf.train.AdamOptimizer(learning_rate=args.lr, epsilon=1e-4),
                 gamma=0.99,
                 grad_norm_clipping=10,
@@ -210,8 +218,8 @@ if __name__ == '__main__':
         approximate_num_iters = args.num_steps / 4
         exploration = PiecewiseSchedule([
             (0, 1.0),
-            (1e6 / 4, 0.1), # (approximate_num_iters / 50, 0.1),
-            (5e6 / 4, 0.01) # (approximate_num_iters / 5, 0.01)
+            (args.num_steps / 5, 0.1), # (approximate_num_iters / 50, 0.1),
+            (args.num_steps / 0.5, 0.01) # (approximate_num_iters / 5, 0.01)
         ], outside_value=0.01)
         learning_rate = PiecewiseSchedule([
             (0, 1e-4),
@@ -251,11 +259,12 @@ if __name__ == '__main__':
                 action = act(obs.value[None], head=head, update_eps=exploration.value(num_iters))[0]
             else:
                 action = act(obs.value[None], update_eps=exploration.value(num_iters))[0]
-            new_obs = env.transition(env.get_actions(action))
+            new_obs = env.transition(next(env.get_actions(action)))
             ep_rewards[-1] += new_obs.reward
-            replay_buffer.add(new_obs.value, action, new_obs.reward, new_obs, env.is_terminated())
+            terminated = env.is_terminated()
+            replay_buffer.add(obs.value, action, new_obs.reward, new_obs.value, terminated)
             obs = new_obs
-            if env.is_terminated():
+            if terminated:
                 obs = env.initialize()
                 head = np.random.randint(args.heads)
                 ep_rewards.append(0)
@@ -294,20 +303,20 @@ if __name__ == '__main__':
             if num_iters > args.num_steps:
                 break
 
-            if done:
+            if terminated:
                 steps_left = args.num_steps - num_iters
                 completion = np.round(num_iters / args.num_steps, 1)
 
                 logger.record_tabular("% completion", completion)
                 logger.record_tabular("iters", num_iters)
-                logger.record_tabular("episodes", len(rewards))
-                logger.record_tabular("reward (100 epi mean)", np.mean(rewards[-100:]))
+                logger.record_tabular("episodes", len(ep_rewards))
+                logger.record_tabular("reward (100 epi mean)", np.mean(ep_rewards[-100:]))
                 logger.record_tabular("head for episode", (head+1))
                 logger.record_tabular("exploration", exploration.value(num_iters))
                 if args.prioritized:
                     logger.record_tabular("max priority", replay_buffer._max_priority)
                 fps_estimate = (float(steps_per_iter) / (float(iteration_time_est) + 1e-6)
-                                if steps_per_iter._value is not None else "calculating...")
+                                if steps_per_iter._value is not None else float(-1))
                 logger.dump_tabular()
                 logger.log()
                 logger.log("ETA: " + pretty_eta(int(steps_left / fps_estimate)))
