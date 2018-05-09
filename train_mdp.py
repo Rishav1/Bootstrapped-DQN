@@ -59,17 +59,48 @@ def plotly_plot(ep_rewards, filename):
         cumsum = np.cumsum(np.insert(x, 0, 0)) 
         return (cumsum[N:] - cumsum[:-N]) / float(N)
 
+    mean_data = []
+    max_data = []
+    min_data = []
+    for tup in zip(*ep.rewards.values()):
+        mean_data.append(sum(tup)/len(tup))
+        max_data.append(max(tup))
+        min_data.append(min(tup))
+    
+    max_data.reverse()
+    episodes = list(range(len(mean_data))
+    episodes_reverse = list(range(len(mean_data) - 1, -1, -1))
+    
+    #for head, rewards in ep_rewards.items():
+    #    rewards_mean = running_mean(rewards, 100)
+    #    data.append(
+    #        go.Scatter(
+    #            y=rewards_mean,
+    #            x=list(range(len(rewards_mean))),
+    #            mode='lines',
+    #            name='Head {}'.format(head),
+    #        )
+    #    )
+    
     data = []
-    for head, rewards in ep_rewards.items():
-        rewards_mean = running_mean(rewards, 100)
-        data.append(
-            go.Scatter(
-                y=rewards_mean,
-                x=list(range(len(rewards_mean))),
-                mode='lines',
-                name='Head {}'.format(head),
-            )
+    data.append(
+        go.Scatter(
+            x=episodes,
+            y=mean_data,
+            mode='lines',
+            name='mean'
         )
+    )
+
+    data.append(
+        go.Scatter(
+            x=episodes+episodes_reversed,
+            y=min_data+max_data,
+            mode='tozerox'
+        )
+    )
+
+     
     fig = go.Figure(data=data, layout=layout)
     py.plot(fig, filename=filename, auto_open=False)
 
@@ -185,7 +216,7 @@ def maybe_save_model(savedir, container, state, rewards, steps):
     relatively_safe_pickle_dump(steps, os.path.join(savedir, 'steps.pkl'))
     if container is not None:
         container.put(os.path.join(savedir, 'steps.pkl'), 'steps.pkl')
-    plotly_plot(rewards, savedir.split("/")[-1])
+    plotly_plot(rewards, "-".join(savedir.split("/")))
     logger.log("Saved model in {} seconds\n".format(time.time() - start_time))
 
 
@@ -370,7 +401,7 @@ if __name__ == '__main__':
                 logger.record_tabular("exploration", exploration.value(num_iters))
                 if args.prioritized:
                     logger.record_tabular("max priority", replay_buffer._max_priority)
-                fps_estimate = (float(steps_per_iter) / (float(iteration_time_est) + 1e-6)
+                fps_estimate = (float(steps_per_iter._value) / (float(iteration_time_est) + 1e-6)
                                 if steps_per_iter._value is not None else None)
                 logger.dump_tabular()
                 logger.log()
