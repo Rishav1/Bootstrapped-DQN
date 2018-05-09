@@ -1,3 +1,6 @@
+import plotly.plotly as py
+import plotly.graph_objs as go
+
 import argparse
 import numpy as np
 import os
@@ -28,6 +31,42 @@ from baselines.common.schedules import LinearSchedule, PiecewiseSchedule
 from baselines.common.atari_wrappers_deprecated import wrap_dqn
 from baselines.common.azure_utils import Container
 from model import model, dueling_model, bootstrap_model, simple_bootstrap_model
+
+def plotly_plot(ep_rewards, filename):
+    layout = go.Layout(
+        paper_bgcolor='rgb(255,255,255)',
+        plot_bgcolor='rgb(229,229,229)',
+        xaxis=dict(
+            gridcolor='rgb(255,255,255)',
+            showgrid=True,
+            showline=False,
+            showticklabels=True,
+            tickcolor='rgb(127,127,127)',
+            ticks='outside',
+            zeroline=False
+        ),
+        yaxis=dict(
+            gridcolor='rgb(255,255,255)',
+            showgrid=True,
+            showline=False,
+            showticklabels=True,
+            tickcolor='rgb(127,127,127)',
+            ticks='outside',
+            zeroline=False
+        ),
+    )
+    data = []
+    for head, rewards in ep_rewards.items():
+        data.append(
+            go.Scatter(
+                x=rewards,
+                y=range(len(rewards)),
+                modes='lines',
+                name='Head {}'.format(head),
+            )
+        )
+    fig = go.Figure(data=data, layout=layout)
+    py.iplot(fig, filename=filename)
 
 def multidim_mdp(num_nodes_per_dim, num_dimension, state_size):
     states = {}
@@ -79,7 +118,6 @@ def multidim_mdp(num_nodes_per_dim, num_dimension, state_size):
     multidim_model.add_init_states({states[(1,) * num_dimension] : 1})
     multidim_model.add_final_states([states[(0,) * num_dimension], states[(num_nodes_per_dim ** num_dimension - 1,) * num_dimension]])
     multidim_model.finalize()
-    multidim_model.visualize()
     return multidim_model
 
 
@@ -108,7 +146,6 @@ def parse_args():
     parser.add_argument("--prioritized-beta0", type=float, default=0.4, help="initial value of beta parameters for prioritized replay")
     parser.add_argument("--prioritized-eps", type=float, default=1e-6, help="eps parameter for prioritized replay buffer")
     # mdp Parameters
-    parser.add_argument("--save-summary-dir", type=str, default="", help="default tensorboard summary directory")
     parser.add_argument("--mdp-arity", type=int, default=10, help="nodes per dim of MDP")
     parser.add_argument("--mdp-dimension", type=int, default=1, help="dimentions of MDP")
     parser.add_argument("--mdp-state-size", type=int, default=5, help="representational dimension of MDP states")
@@ -117,7 +154,7 @@ def parse_args():
     parser.add_argument("--save-dir", type=str, default="./logs", help="directory in which training state and model should be saved.")
     parser.add_argument("--save-azure-container", type=str, default=None,
                         help="It present data will saved/loaded from Azure. Should be in format ACCOUNT_NAME:ACCOUNT_KEY:CONTAINER")
-    parser.add_argument("--save-freq", type=int, default=1e6, help="save model once every time this many iterations are completed")
+    parser.add_argument("--save-freq", type=int, default=5000, help="save model once every time this many iterations are completed")
     boolean_flag(parser, "load-on-start", default=True, help="if true and model was previously saved then training will be resumed")
     return parser.parse_args()
 
@@ -143,6 +180,7 @@ def maybe_save_model(savedir, container, state, rewards, steps):
     relatively_safe_pickle_dump(steps, os.path.join(savedir, 'steps.pkl'))
     if container is not None:
         container.put(os.path.join(savedir, 'steps.pkl'), 'steps.pkl')
+    plotly_plot(rewards, os.path.join(savedir, 'episode_rewards'))
     logger.log("Saved model in {} seconds\n".format(time.time() - start_time))
 
 
@@ -238,7 +276,7 @@ if __name__ == '__main__':
         U.initialize()
         update_target()
         num_iters = 0
-        ep_rewards = []
+        ep_rewards = {}
 
         # Load the model
         state = maybe_load_model(savedir, container)
@@ -250,10 +288,12 @@ if __name__ == '__main__':
         steps_per_iter = RunningAvg(0.999)
         iteration_time_est = RunningAvg(0.999)
         obs = env.initialize()
-        ep_rewards.append(0)
 
         # Main training loop
         head = np.random.randint(args.heads)        #Initial head initialisation
+        ep_rewards[head] = [0]
+        episode = 1
+
         while True:
             num_iters += 1
             # Take action and store transition in the replay buffer.
@@ -262,14 +302,19 @@ if __name__ == '__main__':
             else:
                 action = act(obs.value[None], update_eps=exploration.value(num_iters))[0]
             new_obs = env.transition(next(env.get_actions(action)))
-            ep_rewards[-1] += new_obs.reward
+            ep_rewards[head][-1] += new_obs.reward
+
             terminated = env.is_terminated()
             replay_buffer.add(obs.value, action, new_obs.reward, new_obs.value, terminated)
             obs = new_obs
             if terminated:
+                episode += 1
                 obs = env.initialize()
                 head = np.random.randint(args.heads)
-                ep_rewards.append(0)
+                if head in ep_rewards.keys():
+                    ep_rewards[head].append(0)
+                else:
+                    ep_rewards[head] = [0]
 
             if (num_iters > max(0.5 * args.batch_size, args.replay_buffer_size // 20) and
                     num_iters % args.learning_freq == 0):
@@ -311,8 +356,8 @@ if __name__ == '__main__':
 
                 logger.record_tabular("% completion", completion)
                 logger.record_tabular("iters", num_iters)
-                logger.record_tabular("episodes", len(ep_rewards))
-                logger.record_tabular("reward (100 epi mean)", np.mean(ep_rewards[-100:]))
+                logger.record_tabular("episodes", episode)
+                logger.record_tabular("reward (100 epi mean)", [np.mean(rewards[-100:] for rewards in ep_rewards.values()]))
                 logger.record_tabular("head for episode", (head+1))
                 logger.record_tabular("exploration", exploration.value(num_iters))
                 if args.prioritized:
