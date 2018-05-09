@@ -92,6 +92,8 @@ def parse_args():
     parser.add_argument("--replay-buffer-size", type=int, default=int(1e5), help="replay buffer size")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate for Adam optimizer")
     parser.add_argument("--num-steps", type=int, default=int(4e5), help="total number of steps to run the environment for")
+    parser.add_argument("--epsilon-schedule", type=int, default=5, help="epsilon shedule parameter")
+    parser.add_argument("--learning-schedule", type=float, default=1.6, help="learning shedule parameter")
     parser.add_argument("--batch-size", type=int, default=32, help="number of transitions to optimize at the same time")
     parser.add_argument("--learning-freq", type=int, default=1, help="number of iterations between every optimization step")
     parser.add_argument("--target-update-freq", type=int, default=1000, help="number of iterations between every target network update")
@@ -218,13 +220,13 @@ if __name__ == '__main__':
         approximate_num_iters = args.num_steps / 4
         exploration = PiecewiseSchedule([
             (0, 1.0),
-            (args.num_steps / 5, 0.1), # (approximate_num_iters / 50, 0.1),
-            (args.num_steps / 0.5, 0.01) # (approximate_num_iters / 5, 0.01)
+            (args.num_steps / args.epsilon_schedule, 0.1), # (approximate_num_iters / 50, 0.1),
+            (args.num_steps / (args.epsilon_schedule * 0.1), 0.01) # (approximate_num_iters / 5, 0.01)
         ], outside_value=0.01)
         learning_rate = PiecewiseSchedule([
             (0, 1e-4),
-            (1e6 / 4, 1e-4), # (approximate_num_iters / 50, 0.1),
-            (5e6 / 4, 5e-5) # (approximate_num_iters / 5, 0.01)
+            (args.num_steps / args.learning_schedule, 1e-4),
+            (args.num_steps / (args.learning_schedule * 0.5), 5e-5)
         ], outside_value=5e-5)
 
         if args.prioritized:
