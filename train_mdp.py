@@ -1,4 +1,4 @@
-import plotly.plotly as py
+import plotly.offline as offline
 import plotly.graph_objs as go
 
 import argparse
@@ -34,6 +34,7 @@ from model import model, dueling_model, bootstrap_model, simple_bootstrap_model
 
 def plotly_plot(ep_rewards, filename):
     layout = go.Layout(
+        title='Mean episodic score for multidimentional MDP',
         paper_bgcolor='rgb(255,255,255)',
         plot_bgcolor='rgb(229,229,229)',
         xaxis=dict(
@@ -43,6 +44,7 @@ def plotly_plot(ep_rewards, filename):
             showticklabels=True,
             tickcolor='rgb(127,127,127)',
             ticks='outside',
+            title='Episodes',
             zeroline=False
         ),
         yaxis=dict(
@@ -52,6 +54,7 @@ def plotly_plot(ep_rewards, filename):
             showticklabels=True,
             tickcolor='rgb(127,127,127)',
             ticks='outside',
+            title='(10 episode) Mean score',
             zeroline=False
         ),
     )
@@ -62,31 +65,37 @@ def plotly_plot(ep_rewards, filename):
     mean_data = []
     max_data = []
     min_data = []
-    for tup in zip(*ep.rewards.values()):
+    
+    
+    data = []
+    ep_rewards_mean = []
+
+    for head, rewards in ep_rewards.items():
+        rewards_mean = running_mean(rewards, 100)
+        data.append(
+            go.Scatter(
+                y=rewards_mean,
+                x=list(range(len(rewards_mean))),
+                mode='lines',
+                name='head {}'.format(head + 1),
+            )
+        )
+        ep_rewards_mean.append(rewards_mean)
+    
+    for tup in zip(*ep_rewards_mean):
         mean_data.append(sum(tup)/len(tup))
         max_data.append(max(tup))
         min_data.append(min(tup))
     
-    max_data.reverse()
-    episodes = list(range(len(mean_data))
-    episodes_reverse = list(range(len(mean_data) - 1, -1, -1))
+    max_data = np.flip(max_data, 0)
+    episodes = list(range(len(mean_data)))
+    episodes_reversed = list(range(len(mean_data) - 1, -1, -1))
     
-    #for head, rewards in ep_rewards.items():
-    #    rewards_mean = running_mean(rewards, 100)
-    #    data.append(
-    #        go.Scatter(
-    #            y=rewards_mean,
-    #            x=list(range(len(rewards_mean))),
-    #            mode='lines',
-    #            name='Head {}'.format(head),
-    #        )
-    #    )
-    
-    data = []
     data.append(
         go.Scatter(
             x=episodes,
             y=mean_data,
+            line=dict(color='rgb(0,176,246)', width=4, dash='dash'),    
             mode='lines',
             name='mean'
         )
@@ -95,14 +104,18 @@ def plotly_plot(ep_rewards, filename):
     data.append(
         go.Scatter(
             x=episodes+episodes_reversed,
-            y=min_data+max_data,
-            mode='tozerox'
+            y=np.concatenate([min_data, max_data], axis=0),
+            fill='tozerox',
+            fillcolor='rgba(0,100,80,0.2)',
+            line=dict(color='transparent'),
+            showlegend=False
         )
     )
 
      
     fig = go.Figure(data=data, layout=layout)
-    py.plot(fig, filename=filename, auto_open=False)
+    offline.plot(fig, filename=filename, auto_open=False, image='png')
+    #offline.image.save_as(fig, filename=filename)
 
 def multidim_mdp(num_nodes_per_dim, num_dimension, state_size):
     states = {}
@@ -152,7 +165,7 @@ def multidim_mdp(num_nodes_per_dim, num_dimension, state_size):
                 multidim_model.add_transition(state, actions[2 * dim + 1], {state : 1})
 
     multidim_model.add_init_states({states[(1,) * num_dimension] : 1})
-    multidim_model.add_final_states([states[(0,) * num_dimension], states[(num_nodes_per_dim ** num_dimension - 1,) * num_dimension]])
+    multidim_model.add_final_states([states[(0,) * num_dimension], states[(num_nodes_per_dim - 1,) * num_dimension]], num_nodes_per_dim * num_dimension + 9)
     multidim_model.finalize()
     return multidim_model
 
@@ -216,7 +229,7 @@ def maybe_save_model(savedir, container, state, rewards, steps):
     relatively_safe_pickle_dump(steps, os.path.join(savedir, 'steps.pkl'))
     if container is not None:
         container.put(os.path.join(savedir, 'steps.pkl'), 'steps.pkl')
-    plotly_plot(rewards, "-".join(savedir.split("/")))
+    plotly_plot(rewards, os.path.join(savedir, 'returns.html'))
     logger.log("Saved model in {} seconds\n".format(time.time() - start_time))
 
 
