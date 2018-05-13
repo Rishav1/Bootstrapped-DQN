@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
+import tensorflow.contrib.keras as keras
 
 def simple_bootstrap_model(inpt, num_actions, scope, reuse=False, heads=10):
     """This model takes as input an observation and returns values of all actions."""
@@ -7,15 +8,15 @@ def simple_bootstrap_model(inpt, num_actions, scope, reuse=False, heads=10):
         out_list = []
         out = inpt
         with tf.variable_scope("convnet"):
-            out_temp = layers.fully_connected(out, num_outputs=64, activation_fn=tf.nn.relu)
+            out_temp = layers.fully_connected(out, num_outputs=64, activation_fn=tf.nn.relu, weights_initializer=keras.initializers.RandomUniform(-1, 1))
         out = out_temp
 
         with tf.variable_scope("heads"):
             for _ in range(heads):
                 scope_net = "action_value_head_" + str(_)
                 with tf.variable_scope(scope_net):
-                    out_temp = layers.fully_connected(out, num_outputs=64, activation_fn=tf.nn.relu)
-                    out_temp = layers.fully_connected(out_temp, num_outputs=num_actions, activation_fn=None)
+                    out_temp = layers.fully_connected(out, num_outputs=64, activation_fn=tf.nn.relu, weights_initializer=keras.initializers.RandomUniform(-1, 1))
+                    out_temp = layers.fully_connected(out_temp, num_outputs=num_actions, activation_fn=None, weights_initializer=keras.initializers.RandomUniform(-1, 1))
                 out_list.append(out_temp)
         return out_list
 

@@ -150,8 +150,8 @@ def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, he
                 action_subsets = tf.stack(action_subsets, axis=1)
                 actions_cover = set_cover(action_subsets)
 
-                head_preferred_actions = tf.transpose(action_subsets, [1, 0, 2])[head]
-                deterministic_actions = tf.argmax(tf.multiply(actions_cover, head_preferred_actions), axis=1)
+                # head_preferred_actions = tf.transpose(action_subsets, [1, 0, 2])[head]
+                deterministic_actions = tf.argmax(tf.multiply(actions_cover, tf.gather(q_values_online, head)), axis=1)
             else:
                 q_value = tf.gather(q_values_online, head)
                 deterministic_actions = tf.argmax(q_value, axis=1)

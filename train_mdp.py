@@ -59,14 +59,14 @@ def plotly_plot(ep_rewards, filename):
         ),
     )
     def running_mean(x, N):
-        cumsum = np.cumsum(np.insert(x, 0, 0)) 
+        cumsum = np.cumsum(np.insert(x, 0, 0))
         return (cumsum[N:] - cumsum[:-N]) / float(N)
 
     mean_data = []
     max_data = []
     min_data = []
-    
-    
+
+
     data = []
     ep_rewards_mean = []
 
@@ -112,9 +112,9 @@ def plotly_plot(ep_rewards, filename):
         )
     )
 
-     
+
     fig = go.Figure(data=data, layout=layout)
-    offline.plot(fig, filename=filename, auto_open=False, image='png')
+    offline.plot(fig, filename=filename, auto_open=False)
     #offline.image.save_as(fig, filename=filename)
 
 def multidim_mdp(num_nodes_per_dim, num_dimension, state_size):
@@ -134,13 +134,13 @@ def multidim_mdp(num_nodes_per_dim, num_dimension, state_size):
             state_ind_value_copy = int(state_ind_value_copy / num_nodes_per_dim)
 
         if state_ind_value == 0:
-            reward = 1/ num_nodes_per_dim
+            reward = 1/ 1000
         elif state_ind_value == num_nodes_per_dim ** num_dimension - 1:
             reward = 1
         else:
             reward = 0
         states[tuple(state_ind)] = state_generator.generate_state(name=tuple(state_ind),
-                                                                  value=np.random.random_sample(state_size),
+                                                                  value=np.array([int(i==state_ind_value) for i in range(num_nodes_per_dim ** num_dimension)]),
                                                                   reward=reward)
 
     multidim_model = MDPModel('Multidim')
@@ -280,7 +280,7 @@ if __name__ == '__main__':
         # Create training graph and replay buffer
         if args.bootstrap :
             act, train, update_target, debug = deepq.build_train(
-                make_obs_ph=lambda name: U.Uint8Input((args.mdp_state_size,), name=name),
+                make_obs_ph=lambda name: U.Uint8Input((args.mdp_arity ** args.mdp_dimension,), name=name),
                 q_func=simple_bootstrap_model,
                 bootstrap=args.bootstrap,
                 num_actions=2 * args.mdp_dimension,
