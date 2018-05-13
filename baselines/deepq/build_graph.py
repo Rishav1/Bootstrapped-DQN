@@ -78,10 +78,13 @@ def set_cover(subsets):
     M = tf.shape(subsets)[2]
 
     def body(cover):
-        universe_extended = 1 - tf.tile(tf.matmul(subsets, tf.reshape(cover, [B, M, 1])), [1, 1, M])
+        universe_extended = tf.tile(1 - tf.reshape(cover, [B, 1, M]), [1, N, 1])
         s = tf.reduce_sum(tf.multiply(subsets, universe_extended), axis=1)
         c = tf.one_hot(tf.argmax(s, axis=1), M)
-        cover = cover + c * (1 - cover)
+        cover = tf.Print(cover, [cover], "Before is: ", summarize=1000)
+        batch_elem_not_covered = tf.reduce_any(tf.matmul(subsets, tf.reshape(cover, [B, M, 1])) < 1, axis=1)
+        cover = tf.where(tf.reshape(batch_elem_not_covered, [B]), cover + c * (1 - cover), cover)
+        cover = tf.Print(cover, [cover], "After is: ", summarize=1000)
         return cover
 
     def cond(cover):
@@ -290,10 +293,10 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, sw
 
                 action_subsets = tf.stack(action_subsets, axis=1)
                 actions_cover = set_cover(action_subsets)
-                preferred_actions = tf.transpose(action_subsets, [1, 0, 2])
+                # preferred_actions = tf.transpose(action_subsets, [1, 0, 2])
 
                 for i in range(heads):
-                    q_tp1_best_using_online_net.append(tf.argmax(tf.multiply(actions_cover, preferred_actions[i]), axis=1))
+                    q_tp1_best_using_online_net.append(tf.argmax(tf.multiply(actions_cover, q_tp1[i]), axis=1))
                     q_tp1_best.append(tf.reduce_sum(q_tp1[i] * tf.one_hot(q_tp1_best_using_online_net[i], num_actions), 1))
             elif double_q:
                 q_tp1_using_online_net = q_func(obs_tp1_input.get(), num_actions, scope="q_func", reuse=True, heads=heads)
