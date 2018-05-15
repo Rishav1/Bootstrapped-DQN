@@ -178,8 +178,9 @@ def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, he
 
             eps = tf.get_variable("eps", (), initializer=tf.constant_initializer(0))
 
-            q_values = q_func(observations_ph.get(), num_actions, scope="q_func")
-            deterministic_actions = tf.argmax(q_values, axis=1)
+            q_values = q_func(observations_ph.get(), num_actions, scope="q_func", heads=heads)
+            q_values_target = q_func(observations_ph.get(), num_actions, scope="target_q_func", heads=heads)
+            deterministic_actions = tf.argmax(q_values[0], axis=1)
 
             batch_size = tf.shape(observations_ph.get())[0]
             random_actions = tf.random_uniform(tf.stack([batch_size]), minval=0, maxval=num_actions, dtype=tf.int64)

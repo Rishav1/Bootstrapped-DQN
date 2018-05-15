@@ -261,7 +261,7 @@ if __name__ == '__main__':
     else:
         args.device = "/gpu:{}".format(args.gpu - 1)
     # Parse savedir and azure container.
-    savedir = "{}{}_mdp_{}_{}_{}".format(args.save_dir,"swarm" if args.swarm else "bootstrap", args.mdp_arity, args.mdp_dimension, args.mdp_state_size)
+    savedir = "_{}_mdp_{}_{}_{}".format(args.mdp_arity, args.mdp_dimension, args.mdp_state_size)
     if args.save_azure_container is not None:
         account_name, account_key, container_name = args.save_azure_container.split(":")
         container = Container(account_name=account_name,
@@ -296,7 +296,7 @@ if __name__ == '__main__':
             act, train, update_target, debug = deepq.build_train(
                 make_obs_ph=lambda name: U.Uint8Input((args.mdp_arity ** args.mdp_dimension,), name=name),
                 q_func=dueling_model if args.dueling else simple_bootstrap_model,
-                num_actions=2 * args.mdp_arity,
+                num_actions=2 * args.mdp_dimension,
                 optimizer=tf.train.AdamOptimizer(learning_rate=args.lr, epsilon=1e-4),
                 gamma=0.99,
                 grad_norm_clipping=10,
