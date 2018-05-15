@@ -298,11 +298,12 @@ if __name__ == '__main__':
             act, train, update_target, debug = deepq.build_train(
                 make_obs_ph=lambda name: U.Uint8Input((args.mdp_arity ** args.mdp_dimension,), name=name),
                 q_func=dueling_model if args.dueling else simple_bootstrap_model,
-                num_actions=2 * args.mdp_arity,
+                num_actions=2 * args.mdp_dimension,
                 optimizer=tf.train.AdamOptimizer(learning_rate=args.lr, epsilon=1e-4),
                 gamma=0.99,
                 grad_norm_clipping=10,
                 double_q=args.double_q,
+                heads=1,
                 device=args.device
             )
 
