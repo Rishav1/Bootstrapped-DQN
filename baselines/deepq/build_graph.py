@@ -81,10 +81,8 @@ def set_cover(subsets):
         universe_extended = tf.tile(1 - tf.reshape(cover, [B, 1, M]), [1, N, 1])
         s = tf.reduce_sum(tf.multiply(subsets, universe_extended), axis=1)
         c = tf.one_hot(tf.argmax(s, axis=1), M)
-        cover = tf.Print(cover, [cover], "Before is: ", summarize=1000)
-        batch_elem_not_covered = tf.reduce_any(tf.matmul(subsets, tf.reshape(cover, [B, M, 1])) < 1, axis=1)
-        cover = tf.where(tf.reshape(batch_elem_not_covered, [B]), cover + c * (1 - cover), cover)
-        cover = tf.Print(cover, [cover], "After is: ", summarize=1000)
+        batch_elem_not_covered = tf.reduce_any(tf.reshape(tf.matmul(subsets, tf.reshape(cover, [B, M, 1])), [B, N]) < 1, axis=1)
+        cover = tf.where(batch_elem_not_covered, cover + c * (1 - cover), cover)
         return cover
 
     def cond(cover):
