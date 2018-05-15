@@ -81,21 +81,21 @@ def plotly_plot(ep_rewards, filename):
             )
         )
         ep_rewards_mean.append(rewards_mean)
-    
+
     for tup in zip(*ep_rewards_mean):
         mean_data.append(sum(tup)/len(tup))
         max_data.append(max(tup))
         min_data.append(min(tup))
-    
+
     max_data = np.flip(max_data, 0)
     episodes = list(range(len(mean_data)))
     episodes_reversed = list(range(len(mean_data) - 1, -1, -1))
-    
+
     data.append(
         go.Scatter(
             x=episodes,
             y=mean_data,
-            line=dict(color='rgb(0,176,246)', width=4, dash='dash'),    
+            line=dict(color='rgb(0,176,246)', width=4, dash='dash'),
             mode='lines',
             name='mean'
         )
@@ -173,7 +173,7 @@ def multidim_mdp(num_nodes_per_dim, num_dimension, state_size):
 def parse_args():
     parser = argparse.ArgumentParser("DQN experiments for Cartpole")
     # Environment
-    parser.add_argument("--seed", type=int, default=42, help="which seed to use")
+    parser.add_argument("--seed", type=int, default=1, help="which seed to use")
     parser.add_argument("--gpu", type=int, default=1, help="GPU device to use(0 for none)")
     # Core DQN parameters
     parser.add_argument("--replay-buffer-size", type=int, default=int(1e5), help="replay buffer size")
@@ -191,6 +191,7 @@ def parse_args():
     boolean_flag(parser, "bootstrap", default=True, help="whether or not to use bootstrap model")
     boolean_flag(parser, "swarm", default=False, help="whether or not to use bootstrap model")
     boolean_flag(parser, "prioritized", default=False, help="whether or not to use prioritized replay buffer")
+    boolean_flag(parser, "voting", default=False, help="whether or not to use ensemble voting algorithm")
     parser.add_argument("--prioritized-alpha", type=float, default=0.6, help="alpha parameter for prioritized replay buffer")
     parser.add_argument("--prioritized-beta0", type=float, default=0.4, help="initial value of beta parameters for prioritized replay")
     parser.add_argument("--prioritized-eps", type=float, default=1e-6, help="eps parameter for prioritized replay buffer")
@@ -261,7 +262,7 @@ if __name__ == '__main__':
     else:
         args.device = "/gpu:{}".format(args.gpu - 1)
     # Parse savedir and azure container.
-    savedir = "{}{}_mdp_{}_{}_{}".format(args.save_dir,"swarm" if args.swarm else "bootstrap", args.mdp_arity, args.mdp_dimension, args.mdp_state_size)
+    savedir = "{}_mdp_{}_{}_{}".format(args.save_dir, args.mdp_arity, args.mdp_dimension, args.mdp_state_size)
     if args.save_azure_container is not None:
         account_name, account_key, container_name = args.save_azure_container.split(":")
         container = Container(account_name=account_name,
@@ -290,12 +291,13 @@ if __name__ == '__main__':
                 double_q=args.double_q,
                 heads=args.heads,
                 swarm=args.swarm,
-                device=args.device
+                device=args.device,
+                voting=args.voting
             )
         else:
             act, train, update_target, debug = deepq.build_train(
-                make_obs_ph=lambda name: U.Uint8Input((args.mdp_state_size,), name=name),
-                q_func=dueling_model if args.dueling else model,
+                make_obs_ph=lambda name: U.Uint8Input((args.mdp_arity ** args.mdp_dimension,), name=name),
+                q_func=dueling_model if args.dueling else simple_bootstrap_model,
                 num_actions=2 * args.mdp_arity,
                 optimizer=tf.train.AdamOptimizer(learning_rate=args.lr, epsilon=1e-4),
                 gamma=0.99,

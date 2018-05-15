@@ -95,7 +95,7 @@ def set_cover(subsets):
 
     return loop
 
-def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, heads=10, scope="deepq", reuse=None, device='\cpu:0'):
+def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, voting=False, heads=1, scope="deepq", reuse=None, device='\cpu:0'):
     """Creates the act function:
 
     Parameters
@@ -155,6 +155,16 @@ def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, he
 
                 # head_preferred_actions = tf.transpose(action_subsets, [1, 0, 2])[head]
                 deterministic_actions = tf.argmax(tf.multiply(actions_cover, tf.gather(q_values_online, head)), axis=1)
+            elif voting:
+                voted_actions = []
+                for i in range(heads):
+                    voted_actions.append(tf.argmax(q_values_online[i], axis=1))
+                voted_actions = tf.stack(voted_actions, axis=1)
+
+                nearest_k_y, idx, votes = tf.unique_with_counts(tf.reshape(voted_actions, [heads]))
+
+                # q_value = tf.gather(q_values_online, head)
+                deterministic_actions = tf.reshape(tf.argmax(votes), [tf.shape(observations_ph.get())[0]])
             else:
                 q_value = tf.gather(q_values_online, head)
                 deterministic_actions = tf.argmax(q_value, axis=1)
@@ -197,7 +207,7 @@ def build_act(make_obs_ph, q_func, num_actions, bootstrap=False, swarm=False, he
                              updates=[update_eps_expr])
             return act
 
-def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, swarm=False, heads=10, grad_norm_clipping=None, gamma=1.0, double_q=True, scope="deepq", reuse=None, device="/cpu:0"):
+def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, swarm=False, voting=False, heads=1, grad_norm_clipping=None, gamma=1.0, double_q=True, scope="deepq", reuse=None, device="/cpu:0"):
     """Creates the train function:
 
     Parameters
@@ -246,7 +256,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, sw
     debug: {str: function}
         a bunch of functions to print debug data like q_values.
     """
-    act_f = build_act(make_obs_ph, q_func, bootstrap=bootstrap, swarm=swarm, heads=heads, num_actions=num_actions, scope=scope, reuse=reuse, device=device)
+    act_f = build_act(make_obs_ph, q_func, bootstrap=bootstrap, swarm=swarm, voting=voting, heads=heads, num_actions=num_actions, scope=scope, reuse=reuse, device=device)
 
     with tf.variable_scope(scope, reuse=reuse):
         # set up placeholders
@@ -285,7 +295,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, bootstrap=False, sw
                     target_greedy_action = tf.argmax(q_tp1[i], axis=1)
                     online_q_value_threshold = tf.reduce_sum(q_tp1_using_online_net[i] * tf.one_hot(target_greedy_action, num_actions), 1)
                     online_q_value_threshold = tf.tile(tf.expand_dims(online_q_value_threshold, 1), tf.constant([1, num_actions]))
-                    
+
                     action_subset = tf.where((q_tp1_using_online_net[i] - online_q_value_threshold) >= 0,
                                              tf.ones([tf.shape(obs_t_input.get())[0], num_actions]),
                                              tf.zeros([tf.shape(obs_t_input.get())[0], num_actions]))
